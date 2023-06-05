@@ -1,0 +1,683 @@
+package com.gdx.game.entities.player;
+
+import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.InputMultiplexer;
+import com.badlogic.gdx.Screen;
+import com.badlogic.gdx.graphics.Camera;
+import com.badlogic.gdx.scenes.scene2d.Actor;
+import com.badlogic.gdx.scenes.scene2d.InputEvent;
+import com.badlogic.gdx.scenes.scene2d.Stage;
+import com.badlogic.gdx.scenes.scene2d.Touchable;
+import com.badlogic.gdx.scenes.scene2d.ui.Dialog;
+import com.badlogic.gdx.scenes.scene2d.ui.ImageButton;
+import com.badlogic.gdx.scenes.scene2d.ui.Window;
+import com.badlogic.gdx.scenes.scene2d.utils.ClickListener;
+import com.badlogic.gdx.utils.Array;
+import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.utils.viewport.ScreenViewport;
+import com.badlogic.gdx.utils.viewport.Viewport;
+import com.gdx.game.audio.AudioManager;
+import com.gdx.game.audio.AudioObserver;
+import com.gdx.game.audio.AudioSubject;
+import com.gdx.game.battle.BattleObserver;
+import com.gdx.game.battle.BattleState;
+import com.gdx.game.component.Component;
+import com.gdx.game.component.ComponentObserver;
+import com.gdx.game.dialog.ConversationGraph;
+import com.gdx.game.dialog.ConversationGraphObserver;
+import com.gdx.game.dialog.ConversationUI;
+import com.gdx.game.entities.Entity;
+import com.gdx.game.entities.EntityConfig;
+import com.gdx.game.events.ProfileEvents.ProfileEvent;
+import com.gdx.game.entities.player.characterClass.ClassObserver;
+import com.gdx.game.entities.player.characterClass.tree.Node;
+import com.gdx.game.entities.player.characterClass.tree.Tree;
+import com.gdx.game.inventory.InventoryItem;
+import com.gdx.game.inventory.InventoryItemLocation;
+import com.gdx.game.inventory.InventoryObserver;
+import com.gdx.game.inventory.InventoryUI;
+import com.gdx.game.inventory.store.StoreInventoryObserver;
+import com.gdx.game.inventory.store.StoreInventoryUI;
+import com.gdx.game.manager.ResourceManager;
+import com.gdx.game.map.MapManager;
+import com.gdx.game.profile.ProfileManager;
+import com.gdx.game.profile.ProfileObserver;
+import com.gdx.game.quest.QuestGraph;
+import com.gdx.game.quest.QuestUI;
+import com.gdx.game.status.StatsUpUI;
+import com.gdx.game.status.StatusObserver;
+import com.gdx.game.status.StatusUI;
+
+public class PlayerHUD implements Screen, AudioSubject, ProfileObserver, ClassObserver, ComponentObserver, ConversationGraphObserver, BattleObserver, StoreInventoryObserver, InventoryObserver, StatusObserver {
+
+    private Stage stage;
+    private Viewport viewport;
+    private Camera camera;
+    private Entity player;
+    private BattleState battleState;
+
+    private StatusUI statusUI;
+    private InventoryUI inventoryUI;
+    private ConversationUI conversationUI;
+    private ConversationUI notificationUI;
+    private StoreInventoryUI storeInventoryUI;
+    private QuestUI questUI;
+    private StatsUpUI statsUpUI;
+
+    private Dialog messageBoxUI;
+    private Json json;
+    private MapManager mapManager;
+
+    private Array<AudioObserver> observers;
+
+    private Actor stageKeyboardFocus;
+
+    private static final String INVENTORY_FULL = "Your inventory is full!";
+
+    private final int ratioNumber = 2;
+    public PlayerHUD(Camera cameraHUD, Entity entityPlayer, MapManager mapMgr) {
+        camera = cameraHUD;
+        player = entityPlayer;
+        mapManager = mapMgr;
+        viewport = new ScreenViewport(camera);
+        stage = new Stage(viewport);
+        stageKeyboardFocus = stage.getKeyboardFocus();
+        observers = new Array<>();
+        json = new Json();
+        //_stage.setDebugAll(true);
+        initializeMessageBoxUI();
+        initializeStatusUI();
+        initializeInventoryUI();
+        initializeConversationUI();
+        initializeNotificationUI();
+        initializeStoreInventoryUI();
+        initializeQuestUI();
+        addActorsToStage();
+        validateActors();
+        //Observers
+        initializeObservers();
+        //Listeners
+        setListeners();
+    }
+    private void initializeMessageBoxUI() {
+        float stageCenterX = stage.getWidth()/ratioNumber;
+        float stageCenterY = stage.getHeight()/ratioNumber;
+        messageBoxUI = new Dialog("Message", ResourceManager.skin) {
+            {
+                button("OK");
+                text(INVENTORY_FULL);
+            }
+            @Override
+            protected void result(final Object object) {
+                cancel();
+                setVisible(false);
+            }
+
+        };
+        messageBoxUI.setVisible(false);
+        messageBoxUI.pack();
+        float xCoor = stageCenterX - messageBoxUI.getWidth()/ratioNumber;
+        float yCoor = stageCenterY - messageBoxUI.getHeight()/ratioNumber;
+        messageBoxUI.setPosition(xCoor, yCoor);
+    }
+    private void initializeStatusUI() {
+        statusUI = new StatusUI();
+        statusUI.setVisible(true);
+        statusUI.setPosition(0, 0);
+        statusUI.setKeepWithinStage(false);
+        statusUI.setMovable(false);
+    }
+    private void initializeInventoryUI() {
+        inventoryUI = new InventoryUI();
+        inventoryUI.setKeepWithinStage(false);
+        inventoryUI.setMovable(false);
+        inventoryUI.setVisible(false);
+        inventoryUI.setPosition(statusUI.getWidth(), 0);
+
+    }
+    private void initializeConversationUI() {
+        float stageCenterX = stage.getWidth()/ratioNumber;
+        float stageCenterY = stage.getHeight()/ratioNumber;
+        conversationUI = new ConversationUI();
+        conversationUI.setMovable(true);
+        conversationUI.setVisible(false);
+        conversationUI.setPosition(stageCenterX, 0);
+        conversationUI.setWidth(stageCenterX);
+        conversationUI.setHeight(stageCenterY);
+    }
+    private void initializeNotificationUI() {
+        float height = stage.getHeight()/5;
+        notificationUI = new ConversationUI();
+        notificationUI.removeActor(notificationUI.findActor("scrollPane"));
+        notificationUI.getCloseButton().setVisible(false);
+        notificationUI.getCloseButton().setTouchable(Touchable.disabled);
+        notificationUI.setTitle("");
+        notificationUI.setMovable(false);
+        notificationUI.setVisible(false);
+        notificationUI.setPosition(0, 0);
+        notificationUI.setWidth(stage.getWidth());
+        notificationUI.setHeight(height);
+        notificationUI.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                notificationUI.setVisible(false);
+                statusUI.setVisible(true);
+            }
+        });
+    }
+    private void initializeStoreInventoryUI() {
+        storeInventoryUI = new StoreInventoryUI();
+        storeInventoryUI.setMovable(false);
+        storeInventoryUI.setVisible(false);
+        storeInventoryUI.setPosition(0, 0);
+    }
+    private void initializeQuestUI() {
+        float stageCenterY = stage.getHeight()/ratioNumber;
+        questUI = new QuestUI();
+        questUI.setMovable(false);
+        questUI.setVisible(false);
+        questUI.setKeepWithinStage(false);
+        questUI.setPosition(0, stageCenterY);
+        questUI.setWidth(stage.getWidth());
+        questUI.setHeight(stageCenterY);
+    }
+    private void addActorsToStage() {
+        stage.addActor(questUI);
+        stage.addActor(storeInventoryUI);
+        stage.addActor(conversationUI);
+        stage.addActor(notificationUI);
+        stage.addActor(messageBoxUI);
+        stage.addActor(statusUI);
+        stage.addActor(inventoryUI);
+        //add tooltips to the stage
+        addToolTipsToStage(inventoryUI.getInventoryActors());
+        addToolTipsToStage(storeInventoryUI.getInventoryActors());
+    }
+    private void validateActors() {
+        questUI.validate();
+        storeInventoryUI.validate();
+        conversationUI.validate();
+        notificationUI.validate();
+        messageBoxUI.validate();
+        statusUI.validate();
+        inventoryUI.validate();
+    }
+    private void addToolTipsToStage(Array<Actor> actors) {
+        for(Actor actor : actors) {
+            stage.addActor(actor);
+        }
+    }
+    private void initializeObservers() {
+        player.registerObserver(this);
+        statusUI.addObserver(this);
+        storeInventoryUI.addObserver(this);
+        //inventoryUI.addObserver(battleUI.getCurrentState());
+        inventoryUI.addObserver(this);
+        //battleUI.getCurrentState().addObserver(this);
+        this.addObserver(AudioManager.getInstance());
+    }
+    private void setListeners() {
+        ImageButton inventoryButton = statusUI.getInventoryButton();
+        inventoryButton.addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                inventoryUI.setVisible(!inventoryUI.isVisible());
+            }
+        });
+
+        ImageButton questButton = statusUI.getQuestButton();
+        questButton.addListener(new ClickListener() {
+            public void clicked(InputEvent event, float x, float y) {
+                questUI.setVisible(!questUI.isVisible());
+                setInputUI(questUI);
+            }
+        });
+
+        conversationUI.getCloseButton().addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                conversationUI.setVisible(false);
+                mapManager.clearCurrentSelectedMapEntity();
+            }
+        });
+
+        storeInventoryUI.getCloseButton().addListener(new ClickListener() {
+            @Override
+            public void clicked(InputEvent event, float x, float y) {
+                storeInventoryUI.savePlayerInventory();
+                storeInventoryUI.cleanupStoreInventory();
+                storeInventoryUI.setVisible(false);
+                mapManager.clearCurrentSelectedMapEntity();
+            }
+        });
+    }
+    public Stage getStage() {
+        return stage;
+    }
+
+    public StatusUI getStatusUI() {
+        return statusUI;
+    }
+
+    public InventoryUI getInventoryUI() {
+        return inventoryUI;
+    }
+
+    public void updateEntityObservers() {
+        mapManager.unregisterCurrentMapEntityObservers();
+        questUI.initQuests(mapManager);
+        mapManager.registerCurrentMapEntityObservers(this);
+    }
+
+    public void setInputUI(Window ui) {
+        if(ui.isVisible()) {
+            Gdx.input.setInputProcessor(stage);
+        } else {
+            stage.setKeyboardFocus(stageKeyboardFocus);
+            InputMultiplexer inputMultiplexer = new InputMultiplexer();
+            inputMultiplexer.addProcessor(stage);
+            inputMultiplexer.addProcessor(player.getInputProcessor());
+            Gdx.input.setInputProcessor(inputMultiplexer);
+        }
+    }
+
+    public void setBattleState(BattleState battleState) {
+        this.battleState = battleState;
+//        this.battleState.addObserver(this);
+    }
+    public QuestUI getQuestUI() {
+        return questUI;
+    }
+    public Entity getPlayerEntity() {
+        return player;
+    }
+    public MapManager getMapManager() {
+        return mapManager;
+    }
+
+    @Override
+    public void onNotify(ProfileManager profileManager, ProfileEvent event) {
+        event.ProfileManagerActivation(profileManager, this);
+    }
+
+    @Override
+    public void onNotify(String value, ComponentEvent event) {
+        switch(event) {
+            case LOAD_CONVERSATION:
+                EntityConfig config = json.fromJson(EntityConfig.class, value);
+
+                //Check to see if there is a version loading into properties
+                if(config.getItemTypeID().equalsIgnoreCase(InventoryItem.ItemTypeID.NONE.toString())) {
+                    EntityConfig configReturnProperty = ProfileManager.getInstance().getProperty(config.getEntityID(), EntityConfig.class);
+                    if(configReturnProperty != null) {
+                        config = configReturnProperty;
+                    }
+                }
+
+                conversationUI.loadConversation(config);
+                conversationUI.getCurrentConversationGraph().addObserver(this);
+                break;
+            case SHOW_CONVERSATION:
+                EntityConfig configShow = json.fromJson(EntityConfig.class, value);
+
+                if(configShow.getEntityID().equalsIgnoreCase(conversationUI.getCurrentEntityID())) {
+                    conversationUI.setVisible(true);
+                    setInputUI(conversationUI);
+                }
+                break;
+            case HIDE_CONVERSATION:
+                EntityConfig configHide = json.fromJson(EntityConfig.class, value);
+                if(configHide.getEntityID().equalsIgnoreCase(conversationUI.getCurrentEntityID())) {
+                    conversationUI.setVisible(false);
+                    setInputUI(conversationUI);
+                }
+                break;
+            case QUEST_LOCATION_DISCOVERED:
+                String[] string = value.split(Component.MESSAGE_TOKEN);
+                String questID = string[0];
+                String questTaskID = string[1];
+
+                questUI.questTaskComplete(questID, questTaskID);
+                updateEntityObservers();
+                break;
+            default:
+                break;
+        }
+    }
+    @Override
+    public void onNotify(ConversationGraph graph, ConversationCommandEvent event) {
+        switch(event) {
+            case LOAD_STORE_INVENTORY:
+                Entity selectedEntity = mapManager.getCurrentSelectedMapEntity();
+                if(selectedEntity == null) {
+                    break;
+                }
+
+                Array<InventoryItemLocation> inventory =  InventoryUI.getInventory(inventoryUI.getInventorySlotTable());
+                storeInventoryUI.loadPlayerInventory(inventory);
+
+                Array<InventoryItem.ItemTypeID> items  = selectedEntity.getEntityConfig().getInventory();
+                Array<InventoryItemLocation> itemLocations = new Array<>();
+                for(int i = 0; i < items.size; i++) {
+                    itemLocations.add(new InventoryItemLocation(i, items.get(i).toString(), 1, InventoryUI.STORE_INVENTORY));
+                }
+
+                storeInventoryUI.loadStoreInventory(itemLocations);
+
+                conversationUI.setVisible(false);
+                setInputUI(conversationUI);
+                storeInventoryUI.toFront();
+                storeInventoryUI.setVisible(true);
+                break;
+            case EXIT_CONVERSATION:
+                conversationUI.setVisible(false);
+                setInputUI(conversationUI);
+                mapManager.clearCurrentSelectedMapEntity();
+                break;
+            case ACCEPT_QUEST:
+                Entity currentlySelectedEntity = mapManager.getCurrentSelectedMapEntity();
+                if(currentlySelectedEntity == null) {
+                    break;
+                }
+                EntityConfig config = currentlySelectedEntity.getEntityConfig();
+                QuestGraph questGraph = questUI.loadQuest(config.getQuestConfigPath());
+
+                if(questGraph != null) {
+                    //Update conversation dialog
+                    config.setConversationConfigPath(QuestUI.RETURN_QUEST);
+                    config.setCurrentQuestID(questGraph.getQuestID());
+                    ProfileManager.getInstance().setProperty(config.getEntityID(), config);
+                    updateEntityObservers();
+                }
+
+                conversationUI.setVisible(false);
+                setInputUI(conversationUI);
+                mapManager.clearCurrentSelectedMapEntity();
+                break;
+            case RETURN_QUEST:
+                Entity returnEntity = mapManager.getCurrentSelectedMapEntity();
+                if(returnEntity == null) {
+                    break;
+                }
+                EntityConfig configReturn = returnEntity.getEntityConfig();
+
+                EntityConfig configReturnProperty = ProfileManager.getInstance().getProperty(configReturn.getEntityID(), EntityConfig.class);
+                if(configReturnProperty == null) {
+                    return;
+                }
+
+                String questID = configReturnProperty.getCurrentQuestID();
+
+                if(questUI.isQuestReadyForReturn(questID)) {
+                    //notify(AudioObserver.AudioCommand.MUSIC_PLAY_ONCE, AudioObserver.AudioTypeEvent.MUSIC_LEVEL_UP_FANFARE);
+                    QuestGraph quest = questUI.getQuestByID(questID);
+                    statusUI.addXPValue(quest.getXpReward(), true);
+                    statusUI.addGoldValue(quest.getGoldReward());
+                    //notify(AudioObserver.AudioCommand.SOUND_PLAY_ONCE, AudioObserver.AudioTypeEvent.SOUND_COIN_RUSTLE);
+                    inventoryUI.removeQuestItemFromInventory(questID);
+                    questUI.removeQuest(quest);
+                    configReturnProperty.setConversationConfigPath(QuestUI.FINISHED_QUEST);
+
+                    ProfileManager.getInstance().setProperty(configReturnProperty.getEntityID(), configReturnProperty);
+                    ProfileManager.getInstance().saveProfile();
+                }
+
+                conversationUI.setVisible(false);
+                setInputUI(conversationUI);
+                mapManager.clearCurrentSelectedMapEntity();
+                break;
+            case ADD_ENTITY_TO_INVENTORY:
+                Entity entity = mapManager.getCurrentSelectedMapEntity();
+                if(entity == null) {
+                    break;
+                }
+
+                if(inventoryUI.doesInventoryHaveSpace()) {
+                    inventoryUI.addEntityToInventory(entity, entity.getEntityConfig().getCurrentQuestID());
+                    mapManager.clearCurrentSelectedMapEntity();
+                    conversationUI.setVisible(false);
+                    setInputUI(conversationUI);
+                    entity.unregisterObservers();
+                    mapManager.removeMapQuestEntity(entity);
+                    questUI.updateQuests(mapManager);
+                } else {
+                    mapManager.clearCurrentSelectedMapEntity();
+                    conversationUI.setVisible(false);
+                    setInputUI(conversationUI);
+                    messageBoxUI.setVisible(true);
+                }
+                break;
+            case NONE:
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onNotify(String value, StoreInventoryEvent event) {
+        switch (event) {
+            case PLAYER_GP_TOTAL_UPDATED:
+                int val = Integer.parseInt(value);
+                statusUI.setGoldValue(val);
+                //notify(AudioObserver.AudioCommand.SOUND_PLAY_ONCE, AudioObserver.AudioTypeEvent.SOUND_COIN_RUSTLE);
+                break;
+            case PLAYER_INVENTORY_UPDATED:
+                Array<InventoryItemLocation> items = json.fromJson(Array.class, value);
+                InventoryUI.populateInventory(inventoryUI.getInventorySlotTable(), items, inventoryUI.getDragAndDrop(), InventoryUI.PLAYER_INVENTORY, false);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onNotify(int value, StatusEvent event) {
+        switch(event) {
+            case UPDATED_GP:
+                storeInventoryUI.setPlayerGP(value);
+                ProfileManager.getInstance().setProperty("currentPlayerGP", statusUI.getGoldValue());
+                break;
+            case UPDATED_HP:
+                ProfileManager.getInstance().setProperty("currentPlayerHP", statusUI.getHPValue());
+                break;
+            case UPDATED_LEVEL:
+                ProfileManager.getInstance().setProperty("currentPlayerLevel", statusUI.getLevelValue());
+                break;
+            case UPDATED_LEVEL_FROM_QUEST:
+                ProfileManager.getInstance().setProperty("currentPlayerLevel", statusUI.getLevelValue());
+                createStatsUpUI(statusUI.getNbrLevelUp());
+                break;
+            case UPDATED_MP:
+                ProfileManager.getInstance().setProperty("currentPlayerMP", statusUI.getMPValue());
+                break;
+            case UPDATED_XP:
+                ProfileManager.getInstance().setProperty("currentPlayerXP", statusUI.getXPValue());
+                break;
+            case LEVELED_UP:
+                //notify(AudioObserver.AudioCommand.MUSIC_PLAY_ONCE, AudioObserver.AudioTypeEvent.MUSIC_LEVEL_UP_FANFARE);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onNotify(String value, ClassObserver.ClassEvent event) {
+        switch(event) {
+            case CHECK_UPGRADE_TREE_CLASS:
+                String currentClass = ProfileManager.getInstance().getProperty("characterClass", String.class);
+                int AP = ProfileManager.getInstance().getProperty("currentPlayerCharacterAP", Integer.class);
+                int DP = ProfileManager.getInstance().getProperty("currentPlayerCharacterDP", Integer.class);
+                String configFilePath = player.getEntityConfig().getClassTreePath();
+                Tree tree = Tree.buildClassTree(configFilePath);
+                Node node = tree.checkForClassUpgrade(currentClass, AP, DP);
+                Tree.saveNewClass(node);
+
+                if(node != null) {
+                    statusUI.setVisible(false);
+                    notificationUI.setVisible(true);
+                    notificationUI.loadUpgradeClass(node.getClassId());
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void createStatsUpUI(int nbrLevelUp) {
+        statsUpUI = new StatsUpUI(nbrLevelUp);
+        statsUpUI.setPosition(stage.getWidth() / 4, stage.getHeight() / 4);
+        statsUpUI.setKeepWithinStage(false);
+        statsUpUI.setWidth(stage.getWidth() / 2);
+        statsUpUI.setHeight(stage.getHeight() / 2);
+        statsUpUI.setMovable(false);
+
+        statsUpUI.validate();
+        statsUpUI.addObserver((ClassObserver) this);
+        statsUpUI.addObserver((InventoryObserver) this);
+        stage.addActor(statsUpUI);
+    }
+
+    @Override
+    public void show() {
+    }
+
+    @Override
+    public void render(float delta) {
+        stage.act(delta);
+        stage.draw();
+    }
+
+    @Override
+    public void resize(int width, int height) {
+        stage.getViewport().update(width, height, true);
+    }
+
+    @Override
+    public void pause() {
+    }
+
+    @Override
+    public void resume() {
+    }
+
+    @Override
+    public void hide() {
+    }
+
+    @Override
+    public void dispose() {
+        stage.dispose();
+    }
+
+    @Override
+    public void onNotify(Entity enemyEntity, BattleEvent event) {
+        switch (event) {
+            case OPPONENT_DEFEATED:
+                int goldReward = Integer.parseInt(enemyEntity.getEntityConfig().getPropertyValue(EntityConfig.EntityProperties.ENTITY_GP_REWARD.toString()));
+                statusUI.addGoldValue(goldReward);
+                int xpReward = Integer.parseInt(enemyEntity.getEntityConfig().getPropertyValue(EntityConfig.EntityProperties.ENTITY_XP_REWARD.toString()));
+                statusUI.addXPValue(xpReward, false);
+                break;
+            case PLAYER_HIT_DAMAGE:
+                int hpVal = ProfileManager.getInstance().getProperty("currentPlayerHP", Integer.class);
+                statusUI.setHPValue(hpVal);
+                break;
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void onNotify(String value, InventoryEvent event) {
+        switch(event) {
+            case ITEM_CONSUMED:
+                String[] strings = value.split(Component.MESSAGE_TOKEN);
+                if(strings.length != 2) {
+                    return;
+                }
+
+                int type = Integer.parseInt(strings[0]);
+                int typeValue = Integer.parseInt(strings[1]);
+
+                if(InventoryItem.doesRestoreHP(type)) {
+                    //notify(AudioObserver.AudioCommand.SOUND_PLAY_ONCE, AudioObserver.AudioTypeEvent.SOUND_EATING);
+                    statusUI.addHPValue(typeValue);
+                } else if(InventoryItem.doesRestoreMP(type)) {
+                    //notify(AudioObserver.AudioCommand.SOUND_PLAY_ONCE, AudioObserver.AudioTypeEvent.SOUND_DRINKING);
+                    statusUI.addMPValue(typeValue);
+                }
+                break;
+            case REFRESH_STATS:
+                Array<InventoryItemLocation> equipInventory = ProfileManager.getInstance().getProperty("playerEquipInventory", Array.class);
+                inventoryUI.resetEquipSlots();
+                if(equipInventory != null && equipInventory.size > 0) {
+                    InventoryUI.populateInventory(inventoryUI.getEquipSlotTable(), equipInventory, inventoryUI.getDragAndDrop(), InventoryUI.PLAYER_INVENTORY, false);
+                }
+            default:
+                break;
+        }
+    }
+
+    @Override
+    public void addObserver(AudioObserver audioObserver) {
+        observers.add(audioObserver);
+    }
+
+    @Override
+    public void removeObserver(AudioObserver audioObserver) {
+        observers.removeValue(audioObserver, true);
+    }
+
+    @Override
+    public void removeAllObservers() {
+        observers.removeAll(observers, true);
+    }
+
+    @Override
+    public void notify(AudioObserver.AudioCommand command, AudioObserver.AudioTypeEvent event) {
+        for(AudioObserver observer: observers) {
+            observer.onNotify(command, event);
+        }
+    }
+
+    public void setOldProfile(Array<InventoryItemLocation> inventory, Array<InventoryItemLocation> equipInventory, Array<QuestGraph> quests, int goldVal, int xpMaxVal, int xpVal, int hpMaxVal, int hpVal, int mpMaxVal, int mpVal, int levelVal) {
+        InventoryUI.populateInventory(inventoryUI.getInventorySlotTable(), inventory, inventoryUI.getDragAndDrop(), InventoryUI.PLAYER_INVENTORY, false);
+        inventoryUI.resetEquipSlots();
+        if(equipInventory != null && equipInventory.size > 0) {
+            InventoryUI.populateInventory(inventoryUI.getEquipSlotTable(), equipInventory, inventoryUI.getDragAndDrop(), InventoryUI.PLAYER_INVENTORY, false);
+        }
+        questUI.setQuests(quests);
+        //set the current max values first
+        statusUI.setXPValueMax(xpMaxVal);
+        statusUI.setHPValueMax(hpMaxVal);
+        statusUI.setMPValueMax(mpMaxVal);
+
+        statusUI.setXPValue(xpVal);
+        statusUI.setHPValue(hpVal);
+        statusUI.setMPValue(mpVal);
+
+        //then add in current values
+        statusUI.setGoldValue(goldVal);
+        statusUI.setLevelValue(levelVal, false);
+    }
+
+    public void setNewProfile(ProfileManager profileManager) {
+        InventoryUI.clearInventoryItems(inventoryUI.getInventorySlotTable());
+        InventoryUI.clearInventoryItems(inventoryUI.getEquipSlotTable());
+        inventoryUI.resetEquipSlots();
+        questUI.setQuests(new Array<>());
+        //add default items if first time
+        Array<InventoryItem.ItemTypeID> items = player.getEntityConfig().getInventory();
+        Array<InventoryItemLocation> itemLocations = new Array<>();
+        for(int i = 0; i < items.size; i++) {
+            itemLocations.add(new InventoryItemLocation(i, items.get(i).toString(), 1, InventoryUI.PLAYER_INVENTORY));
+        }
+        InventoryUI.populateInventory(inventoryUI.getInventorySlotTable(), itemLocations, inventoryUI.getDragAndDrop(), InventoryUI.PLAYER_INVENTORY, false);
+        profileManager.setProperty("playerInventory", InventoryUI.getInventory(inventoryUI.getInventorySlotTable()));
+        //start the player with some money
+        statusUI.setGoldValue(20);
+        statusUI.setStatusForLevel(1);
+    }
+}
