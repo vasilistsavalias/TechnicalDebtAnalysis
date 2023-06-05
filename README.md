@@ -1,5 +1,5 @@
 # TechnicalDebtAnalysis
-Techniqal debt analysis project and improvement of software quality by reducing 
+ 
 
 
 "GdxGame" is an RPG (Role Playing Game) game, in which the user is asked to protect the inhabitants
