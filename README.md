@@ -15,5 +15,5 @@ the environment
 To calculate the metrics and technical debt, the tool used is DesigniteJava, which is a software code
 quality evaluation tool, specifically for Java code. With this program, the code is analyzed and smells
 related to the architecture, design and implementation are detected. In addition, metrics are
-calculated, with the result that this tool contributes to the reduction of technical debt, but also to the
-improvement of software maintenance.
+calculated, with the result that this tool our team contributed to the reduction of technical debt, but also to the
+improvement of software maintenance
