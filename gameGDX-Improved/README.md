@@ -1,3 +1,9 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+##### My team : <a href="https://github.com/hdescottes/GdxGame">original game forked from</a>
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
 # GdxGame
 ![build workflow](https://github.com/hdescottes/GdxGame/actions/workflows/build.yml/badge.svg)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/hdescottes/GdxGame)
@@ -108,4 +114,4 @@ graph TD;
 - Change characters/items/maps/UI sprites
 
 
-##### My team : <a href="https://github.com/hdescottes/GdxGame">original game forked from</a>
+
