@@ -106,3 +106,6 @@ graph TD;
 - Animations on map (opening doors, water, ...)
 
 - Change characters/items/maps/UI sprites
+
+
+##### My team : <a href="https://github.com/hdescottes/GdxGame">original game forked from</a>
